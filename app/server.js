@@ -32,14 +32,41 @@ http.createServer(function (request, response) {
 
 // Notice how much cleaner these endpoint handlers are...
 myRouter.get('/v1/goals', function(request,response) {
-  // Get our query params from the query string
+  // Get our query params from the query string 
   const queryParams = queryString.parse(url.parse(request.url).query)
 
+  const query = queryParams.query ?? ''
+  let sortBy = queryParams.sort
+  if(sortBy == 'upvotes'){
+    sortBy = 'upVotes'
+  }
+
   // TODO: Do something with the query params
+  let filteredGoals = goals.filter(goal => {
+    return goal.description.toLowerCase().includes(query)
+  })
+
+  if(sortBy == "upVotes"){
+    filteredGoals.sort((a, b) => {
+      return b[sortBy] - a[sortBy]
+  })}
+  
+  if(sortBy == "dateCreated"){
+    filteredGoals.sort((a, b) => {
+      let dateA = new Date(a[sortBy])
+      let dateB = new Date(b[sortBy])
+      return dateB - dateA
+  })}
+
 
   // Return all our current goal definitions (for now)
-  return response.end(JSON.stringify(goals));
+  return response.end(JSON.stringify(filteredGoals));
 });
+
+//The User Profile endpoint returns information about the Uber user that has authorized with the application.
+myRouter.get('/v1/me', function(req, res) {
+  return res.end(JSON.stringify(user))
+})
 
 // See how i'm not having to build up the raw data in the body... body parser just gives me the whole thing as an object.
 // See how the router automatically handled the path value and extracted the value for me to use?  How nice!
@@ -48,11 +75,35 @@ myRouter.post('/v1/me/goals/:goalId/accept', function(request,response) {
   let goal = goals.find((goal)=> {
     return goal.id == request.params.goalId
   })
+  // Make sure the data being changed is valid
+  if (!goal) {
+    response.statusCode = 400
+    return response.end("No goal with that ID found.")
+  }
   // Add it to our logged in user's accepted goals
   user.acceptedGoals.push(goal); 
   // No response needed other than a 200 success
   return response.end();
 });
+
+myRouter.post('/me/goals/:goalId/achieve', function(req, response) {
+  let goal = goals.find(goal => {
+    return goal.id == req.params.goalId
+  })
+  // Make sure the data being changed is valid
+  if (!goal) {
+    response.statusCode = 400
+    return response.end("No goal with that ID found.")
+  }
+  user.acceptedGoals = user.acceptedGoals.filter(goal=> {
+    return goal.id != req.params.goalId
+  })
+  user.challengedGoals = user.challengedGoals.filter(goal=> {
+    return goal.id != req.params.goalId
+  })
+  user.achievedGoals.push(goal)
+  return response.end()
+})
 
 myRouter.post('/v1/me/goals/:goalId/challenge/:userId', function(request,response) {
   // Find goal from id in url in list of goals
@@ -73,3 +124,51 @@ myRouter.post('/v1/me/goals/:goalId/challenge/:userId', function(request,respons
   // No response needed other than a 200 success
   return response.end();
 });
+
+myRouter.post('/me/goals/:goalId/gift/:userId', function(req, response) {  
+  let userToGift = users.find(user => {
+    return user.id == req.params.userId
+  })
+    // Make sure the data being changed is valid
+  if (!userToGift) {
+    response.statusCode = 400
+    return response.end("No user with that ID found.")
+  }
+  let goalToGift = users.find(goal => {
+    return goal.id == req.params.goalId
+  })
+    // Make sure the data being changed is valid
+  if (!goalToGift) {
+    response.statusCode = 400
+    return response.end("No goal with that ID found.")
+  }
+
+  userToGift.acceptedGoals = userToGift.acceptedGoals.filter(goal=> {
+    return goal.id != req.params.goalId
+  })
+  userToGift.challengedGoals = userToGift.challengedGoals.filter(goal=> {
+    return goal.id != req.params.goalId
+  })
+  userToGift.giftedGoals.push(goalToGift)
+  return response.end()
+})
+
+myRouter.get('/v1/categories', function(req, res) {
+  // Get our query params from the query string 
+  const queryParams = queryString.parse(url.parse(req.url).query)
+  const limit = queryParams.limit ?? categories.length
+
+  return res.end(JSON.stringify(categories.slice(0, limit)))
+})
+
+myRouter.get('/v1/categories/:categoryId/goals', function(req, res) {
+  let goalsOfCategory = goals.filter(goal => {
+    return goal.categoryId == req.params.categoryId
+  })
+
+  if(goalsOfCategory.length < 1) {
+    res.statusCode = 400
+    return res.end("No goals of the category with that ID found.")
+  }
+  return res.end(JSON.stringify(goalsOfCategory))
+})
